@@ -10,9 +10,15 @@ jobs:
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
-        with:
+        with:  
           node-version: '22'
 
+- name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          
       - name: Install and Build
         run: |
           npm install
