@@ -12,8 +12,7 @@ jobs:
         uses: actions/setup-node@v3
         with:  
           node-version: '22'
-
-- name: Set up JDK
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '17'
