@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { findBestMove } from "@/lib/chessAI";
+import MultiplayerLobby from "@/components/MultiplayerLobby";
+import { useMultiplayerSync } from "@/hooks/useMultiplayerSync";
 
-type Mode = "local" | "ai";
+type Mode = "local" | "ai" | "network";
 type Difficulty = "easy" | "medium" | "hard";
 type BoardTheme = "wood" | "marble" | "plain";
 
@@ -38,6 +40,8 @@ const ChessGame = () => {
   const [promoDialog, setPromoDialog] = useState<{ from: string; to: string } | null>(null);
   const [aiThinking, setAiThinking] = useState(false);
 
+  const mp = useMultiplayerSync();
+
   const chess = chessRef.current;
   const board = chess.board();
   const turn = chess.turn();
@@ -46,6 +50,11 @@ const ChessGame = () => {
   const isStalemate = chess.isStalemate();
   const isDraw = chess.isDraw();
   const isGameOver = chess.isGameOver();
+
+  const isNetworkMode = mode === "network" && mp.status === "connected";
+  // host=white, guest=black
+  const myColor = mp.role === "host" ? "w" : "b";
+  const isMyTurn = isNetworkMode ? turn === myColor : true;
 
   const sync = useCallback(() => setFen(chess.fen()), [chess]);
 
@@ -59,12 +68,29 @@ const ChessGame = () => {
     sync();
   }, [chess, sync]);
 
+  // Listen for remote moves
+  useEffect(() => {
+    if (!isNetworkMode) return;
+    mp.onAction((action: { from: string; to: string; promotion?: string }) => {
+      const result = chess.move(action);
+      if (result) {
+        setLastMove({ from: result.from, to: result.to });
+        setSelected(null);
+        setLegalMoves([]);
+        sync();
+      }
+    });
+    mp.onReset(() => {
+      resetGame();
+    });
+  }, [isNetworkMode, mp, chess, sync, resetGame]);
+
   const handleSquareClick = useCallback((sq: string) => {
     if (isGameOver || aiThinking) return;
     if (mode === "ai" && turn === "b") return;
+    if (isNetworkMode && !isMyTurn) return;
 
     if (selected) {
-      // Try to move
       const moves = chess.moves({ square: selected as any, verbose: true }) as any[];
       const matchingMoves = moves.filter((m: any) => m.to === sq);
       
@@ -73,8 +99,13 @@ const ChessGame = () => {
           setPromoDialog({ from: selected, to: sq });
           return;
         }
-        chess.move({ from: selected, to: sq });
-        setLastMove({ from: selected, to: sq });
+        const result = chess.move({ from: selected, to: sq });
+        if (result) {
+          setLastMove({ from: selected, to: sq });
+          if (isNetworkMode) {
+            mp.sendAction({ from: selected, to: sq });
+          }
+        }
         setSelected(null);
         setLegalMoves([]);
         sync();
@@ -82,9 +113,9 @@ const ChessGame = () => {
       }
     }
 
-    // Select piece
     const piece = chess.get(sq as any);
     if (piece && piece.color === turn) {
+      if (isNetworkMode && piece.color !== myColor) return;
       setSelected(sq);
       const moves = chess.moves({ square: sq as any, verbose: true }) as any[];
       setLegalMoves([...new Set(moves.map((m: any) => m.to))]);
@@ -92,25 +123,38 @@ const ChessGame = () => {
       setSelected(null);
       setLegalMoves([]);
     }
-  }, [selected, chess, turn, isGameOver, mode, aiThinking, sync]);
+  }, [selected, chess, turn, isGameOver, mode, aiThinking, sync, isNetworkMode, isMyTurn, myColor, mp]);
 
   const handlePromotion = useCallback((piece: string) => {
     if (!promoDialog) return;
-    chess.move({ from: promoDialog.from, to: promoDialog.to, promotion: piece });
-    setLastMove({ from: promoDialog.from, to: promoDialog.to });
+    const result = chess.move({ from: promoDialog.from, to: promoDialog.to, promotion: piece });
+    if (result) {
+      setLastMove({ from: promoDialog.from, to: promoDialog.to });
+      if (isNetworkMode) {
+        mp.sendAction({ from: promoDialog.from, to: promoDialog.to, promotion: piece });
+      }
+    }
     setPromoDialog(null);
     setSelected(null);
     setLegalMoves([]);
     sync();
-  }, [promoDialog, chess, sync]);
+  }, [promoDialog, chess, sync, isNetworkMode, mp]);
 
   const handleUndo = useCallback(() => {
+    if (isNetworkMode) return; // No undo in network mode
     if (mode === "ai") { chess.undo(); chess.undo(); }
     else chess.undo();
     setSelected(null);
     setLegalMoves([]);
     sync();
-  }, [chess, mode, sync]);
+  }, [chess, mode, sync, isNetworkMode]);
+
+  const handleNetworkReset = useCallback(() => {
+    resetGame();
+    if (isNetworkMode) {
+      mp.sendReset();
+    }
+  }, [resetGame, isNetworkMode, mp]);
 
   // AI move
   useEffect(() => {
@@ -128,6 +172,24 @@ const ChessGame = () => {
     return () => clearTimeout(timeout);
   }, [fen, mode, turn, isGameOver, chess, difficulty, sync]);
 
+  // Show lobby if network mode and not connected
+  if (mode === "network" && mp.status !== "connected") {
+    return (
+      <MultiplayerLobby
+        status={mp.status}
+        role={mp.role}
+        localCode={mp.localCode}
+        error={mp.error}
+        onCreateRoom={mp.createRoom}
+        onJoinRoom={mp.joinRoom}
+        onCompleteConnection={mp.completeConnection}
+        onDisconnect={mp.disconnect}
+        onBack={() => setMode("local")}
+        gameName="شطرنج"
+      />
+    );
+  }
+
   const getSquareName = (r: number, c: number) => `${String.fromCharCode(97 + c)}${8 - r}`;
   const themeColors = THEMES[theme];
 
@@ -136,7 +198,9 @@ const ChessGame = () => {
     : isStalemate ? "🤝 تعادل - لا حركات متاحة"
     : isDraw ? "🤝 تعادل"
     : isCheck ? `⚠️ كش! دور ${turn === "w" ? "الأبيض" : "الأسود"}`
-    : `دور ${turn === "w" ? "الأبيض" : "الأسود"}${aiThinking ? " (يفكر...)" : ""}`;
+    : isNetworkMode
+      ? (isMyTurn ? "دورك" : "دور الخصم")
+      : `دور ${turn === "w" ? "الأبيض" : "الأسود"}${aiThinking ? " (يفكر...)" : ""}`;
 
   return (
     <div className="min-h-screen wood-texture flex flex-col items-center p-4">
@@ -149,6 +213,14 @@ const ChessGame = () => {
           <Settings2 className="w-5 h-5 text-gold" />
         </button>
       </div>
+
+      {/* Network indicator */}
+      {isNetworkMode && (
+        <div className="flex items-center gap-2 mb-1 text-accent text-xs">
+          <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+          متصل — أنت {mp.role === "host" ? "الأبيض" : "الأسود"}
+        </div>
+      )}
 
       <p className="text-foreground text-sm mb-3">{statusText}</p>
 
@@ -208,12 +280,14 @@ const ChessGame = () => {
 
       {/* Controls */}
       <div className="flex gap-3 mt-4">
-        <Button onClick={resetGame} variant="outline" size="sm" className="border-gold text-gold hover:bg-gold/10">
+        <Button onClick={handleNetworkReset} variant="outline" size="sm" className="border-gold text-gold hover:bg-gold/10">
           <RotateCcw className="w-4 h-4 mr-1" /> جديدة
         </Button>
-        <Button onClick={handleUndo} variant="outline" size="sm" className="border-gold text-gold hover:bg-gold/10" disabled={chess.history().length === 0}>
-          <Undo2 className="w-4 h-4 mr-1" /> تراجع
-        </Button>
+        {!isNetworkMode && (
+          <Button onClick={handleUndo} variant="outline" size="sm" className="border-gold text-gold hover:bg-gold/10" disabled={chess.history().length === 0}>
+            <Undo2 className="w-4 h-4 mr-1" /> تراجع
+          </Button>
+        )}
       </div>
 
       {/* Promotion Dialog */}
@@ -246,6 +320,7 @@ const ChessGame = () => {
                 <SelectContent>
                   <SelectItem value="local">لاعبين محليين</SelectItem>
                   <SelectItem value="ai">ضد الكمبيوتر</SelectItem>
+                  <SelectItem value="network">عبر الشبكة 📶</SelectItem>
                 </SelectContent>
               </Select>
             </div>

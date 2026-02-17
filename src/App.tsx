@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import XOGame from "./pages/XOGame";
 import ChessGame from "./pages/ChessGame";
 import LudoGame from "./pages/LudoGame";
+import LobbyTest from "./pages/LobbyTest";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/xo" element={<XOGame />} />
           <Route path="/chess" element={<ChessGame />} />
           <Route path="/ludo" element={<LudoGame />} />
+          <Route path="/lobby-test" element={<LobbyTest />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
