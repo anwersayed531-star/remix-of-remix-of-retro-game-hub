@@ -1,38 +1,43 @@
-name: Build Android APK
-on: [push]
+name: GameHub Build
+on:
+  push:
+    branches: [ main, master ]
 
 jobs:
-  build:
+  android-build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:  
-          node-version: '22'
-      - name: Set up JDK
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          
-      - name: Install and Build
-        run: |
-          npm install
-          npm run build
 
-      - name: Build APK with Capacitor
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Web Assets
+        run: npm run build
+
+      - name: Configure Capacitor
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init "GameHub" "com.sayed.gamehub" --web-dir dist
+          if [ -d "dist" ]; then WEB_DIR="dist"; else WEB_DIR="build"; fi
+          npx cap init "GameHub" "com.sayed.gamehub" --web-dir $WEB_DIR
           npx cap add android
           npx cap copy android
-          cd android && ./gradlew assembleDebug
+          cd android && chmod +x gradlew && ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyGame-APK
+          name: GameHub-Release-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
