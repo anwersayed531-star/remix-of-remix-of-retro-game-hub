@@ -8,10 +8,6 @@ const config: CapacitorConfig = {
     minWebViewVersion: 55,
     backgroundColor: '#1a0f0a',
   },
-  server: {
-    url: 'https://e5e1967f-ba76-4de2-b92f-3c65be965a63.lovableproject.com?forceHideBadge=true',
-    cleartext: true,
-  },
-};
+  
 
 export default config;
