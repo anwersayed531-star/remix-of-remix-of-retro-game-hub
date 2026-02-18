@@ -27,14 +27,13 @@ jobs:
       - name: Build Web Assets
         run: npm run build
 
-      - name: Add Android Platform
-        run: npx cap add android
-
-      - name: Sync Capacitor
-        run: npx cap sync android
-
-      - name: Build APK
+      - name: Configure Capacitor
         run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          if [ -d "dist" ]; then WEB_DIR="dist"; else WEB_DIR="build"; fi
+          npx cap init "GameHub" "com.sayed.gamehub" --web-dir $WEB_DIR
+          npx cap add android
+          npx cap copy android
           cd android && chmod +x gradlew && ./gradlew assembleDebug
 
       - name: Upload APK
