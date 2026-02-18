@@ -31,6 +31,8 @@ jobs:
 
       - name: Generate Android Project
         run: |
+          if [ -d "dist" ]; then WEB_DIR="dist"; else WEB_DIR="build"; fi
+          npx cap init GameHub com.sayed.gamehub --web-dir=$WEB_DIR
           npx cap add android
           npx cap sync android
 
