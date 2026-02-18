@@ -1,4 +1,4 @@
-name: GameHub Build
+name: GameHub Final Build
 on:
   push:
     branches: [ main, master ]
@@ -10,11 +10,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
+          cache: gradle
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -25,19 +26,19 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Build Web Assets
-        run: npm run build
+        run: CI=false npm run build 
 
       - name: Configure Capacitor
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
           if [ -d "dist" ]; then WEB_DIR="dist"; else WEB_DIR="build"; fi
-          npx cap init "GameHub" "com.sayed.gamehub" --web-dir $WEB_DIR
-          npx cap add android
+          npx cap init "GameHub" "com.sayed.gamehub" --web-dir $WEB_DIR --confirm
+          npx cap add android || echo "Android folder already exists"
           npx cap copy android
           cd android && chmod +x gradlew && ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: GameHub-Release-APK
+          name: GameHub-Final-Release
           path: android/app/build/outputs/apk/debug/app-debug.apk
